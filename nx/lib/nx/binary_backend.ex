@@ -755,11 +755,29 @@ defmodule Nx.BinaryBackend do
 
   defp element_equal(_, :nan, _), do: 0
   defp element_equal(_, _, :nan), do: 0
-  defp element_equal(_, a, b), do: boolean_as_number(a == b)
+
+  defp element_equal(_, a, b) do
+    bool =
+      case {a, b} do
+        {%Complex{re: re_a, im: im_a}, b} when is_number(b) ->
+          re_a == b and im_a == 0
+
+        {a, %Complex{re: re_b, im: im_b}} when is_number(a) ->
+          a == re_b and im_b == 0
+
+        {a, b} ->
+          a == b
+      end
+
+    boolean_as_number(bool)
+  end
 
   defp element_not_equal(_, :nan, _), do: 1
   defp element_not_equal(_, _, :nan), do: 1
-  defp element_not_equal(_, a, b), do: boolean_as_number(a != b)
+
+  defp element_not_equal(out, a, b) do
+    1 - element_equal(out, a, b)
+  end
 
   defp element_logical_and(_, a, b), do: boolean_as_number(as_boolean(a) and as_boolean(b))
   defp element_logical_or(_, a, b), do: boolean_as_number(as_boolean(a) or as_boolean(b))
@@ -1238,25 +1256,6 @@ defmodule Nx.BinaryBackend do
       end
 
     output_batch_groups |> Enum.with_index() |> Enum.map(fn {x, i} -> {x, rem(i, groups)} end)
-  end
-
-  @impl true
-  def eigh(
-        {%{type: output_type} = eigenvals_holder, eigenvecs_holder},
-        %{type: input_type, shape: input_shape} = tensor,
-        opts
-      ) do
-    bin = to_binary(tensor)
-    rank = tuple_size(input_shape)
-    n = elem(input_shape, rank - 1)
-
-    {eigenvals, eigenvecs} =
-      bin_batch_reduce(bin, n * n, input_type, {<<>>, <<>>}, fn matrix, {vals_acc, vecs_acc} ->
-        {vals, vecs} = B.Matrix.eigh(matrix, input_type, {n, n}, output_type, opts)
-        {vals_acc <> vals, vecs_acc <> vecs}
-      end)
-
-    {from_binary(eigenvals_holder, eigenvals), from_binary(eigenvecs_holder, eigenvecs)}
   end
 
   @impl true
